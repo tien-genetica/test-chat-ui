@@ -1,11 +1,29 @@
 'use client';
 
-import { ChatRequestOptions, Message } from 'ai';
+import type { Message } from 'ai';
 import { Button } from './ui/button';
-import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
+import {
+  type Dispatch,
+  type SetStateAction,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Textarea } from './ui/textarea';
-import { deleteTrailingMessages } from '@/app/(chat)/actions';
-import { UseChatHelpers } from '@ai-sdk/react';
+import type { UseChatHelpers } from '@ai-sdk/react';
+
+// Simple message deletion via API
+const deleteTrailingMessages = async ({ id }: { id: string }) => {
+  try {
+    await fetch(`/api/history`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messageId: id }),
+    });
+  } catch (error) {
+    console.error('Failed to delete trailing messages:', error);
+  }
+};
 
 export type MessageEditorProps = {
   message: Message;

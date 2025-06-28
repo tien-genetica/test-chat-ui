@@ -1,11 +1,9 @@
-import { auth } from '@/app/(auth)/auth';
-import type { ArtifactKind } from '@/components/artifact';
-import {
-  deleteDocumentsByIdAfterTimestamp,
-  getDocumentsById,
-  saveDocument,
-} from '@/lib/db/queries';
+import { getSession } from '@/lib/auth';
+import type { ArtifactKind } from '@/lib/types';
+import { apiClient } from '@/lib/api/client';
 import { ChatSDKError } from '@/lib/errors';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -18,13 +16,16 @@ export async function GET(request: Request) {
     ).toResponse();
   }
 
-  const session = await auth();
+  const session = await getSession();
 
   if (!session?.user) {
     return new ChatSDKError('unauthorized:document').toResponse();
   }
 
-  const documents = await getDocumentsById({ id });
+  const documentsResponse = await apiClient.getDocumentsById(id);
+  const documents = Array.isArray(documentsResponse)
+    ? documentsResponse
+    : [documentsResponse];
 
   const [document] = documents;
 
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
     return new ChatSDKError('not_found:document').toResponse();
   }
 
-  if (document.userId !== session.user.id) {
+  if ((document as any).userId !== session.user.id) {
     return new ChatSDKError('forbidden:document').toResponse();
   }
 
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
     ).toResponse();
   }
 
-  const session = await auth();
+  const session = await getSession();
 
   if (!session?.user) {
     return new ChatSDKError('not_found:document').toResponse();
@@ -63,17 +64,22 @@ export async function POST(request: Request) {
   }: { content: string; title: string; kind: ArtifactKind } =
     await request.json();
 
-  const documents = await getDocumentsById({ id });
+  const documentsResponse = await apiClient.getDocumentsById(id);
+  const documents = Array.isArray(documentsResponse)
+    ? documentsResponse
+    : documentsResponse
+      ? [documentsResponse]
+      : [];
 
   if (documents.length > 0) {
     const [document] = documents;
 
-    if (document.userId !== session.user.id) {
+    if ((document as any).userId !== session.user.id) {
       return new ChatSDKError('forbidden:document').toResponse();
     }
   }
 
-  const document = await saveDocument({
+  const document = await apiClient.saveDocument({
     id,
     content,
     title,
@@ -103,24 +109,27 @@ export async function DELETE(request: Request) {
     ).toResponse();
   }
 
-  const session = await auth();
+  const session = await getSession();
 
   if (!session?.user) {
     return new ChatSDKError('unauthorized:document').toResponse();
   }
 
-  const documents = await getDocumentsById({ id });
+  const documentsResponse = await apiClient.getDocumentsById(id);
+  const documents = Array.isArray(documentsResponse)
+    ? documentsResponse
+    : [documentsResponse];
 
   const [document] = documents;
 
-  if (document.userId !== session.user.id) {
+  if ((document as any).userId !== session.user.id) {
     return new ChatSDKError('forbidden:document').toResponse();
   }
 
-  const documentsDeleted = await deleteDocumentsByIdAfterTimestamp({
+  const documentsDeleted = await apiClient.deleteDocumentsByIdAfterTimestamp(
     id,
-    timestamp: new Date(timestamp),
-  });
+    new Date(timestamp),
+  );
 
   return Response.json(documentsDeleted, { status: 200 });
 }

@@ -3,12 +3,26 @@
 import { useMemo } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 import { unstable_serialize } from 'swr/infinite';
-import { updateChatVisibility } from '@/app/(chat)/actions';
+// Simple chat visibility update via API
+const updateChatVisibility = async ({
+  chatId,
+  visibility,
+}: { chatId: string; visibility: string }) => {
+  try {
+    await fetch(`/api/history`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chatId, visibility }),
+    });
+  } catch (error) {
+    console.error('Failed to update chat visibility:', error);
+  }
+};
 import {
   getChatHistoryPaginationKey,
   type ChatHistory,
 } from '@/components/sidebar-history';
-import type { VisibilityType } from '@/components/visibility-selector';
+import type { VisibilityType } from '@/lib/api/types';
 
 export function useChatVisibility({
   chatId,

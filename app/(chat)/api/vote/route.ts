@@ -1,6 +1,8 @@
-import { auth } from '@/app/(auth)/auth';
-import { getChatById, getVotesByChatId, voteMessage } from '@/lib/db/queries';
+import { getSession } from '@/lib/auth';
+import { apiClient } from '@/lib/api/client';
 import { ChatSDKError } from '@/lib/errors';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -13,23 +15,23 @@ export async function GET(request: Request) {
     ).toResponse();
   }
 
-  const session = await auth();
+  const session = await getSession();
 
   if (!session?.user) {
     return new ChatSDKError('unauthorized:vote').toResponse();
   }
 
-  const chat = await getChatById({ id: chatId });
+  const chat = await apiClient.getChatById(chatId);
 
   if (!chat) {
     return new ChatSDKError('not_found:chat').toResponse();
   }
 
-  if (chat.userId !== session.user.id) {
+  if ((chat as any).userId !== session.user.id) {
     return new ChatSDKError('forbidden:vote').toResponse();
   }
 
-  const votes = await getVotesByChatId({ id: chatId });
+  const votes = await apiClient.getVotesByChatId(chatId);
 
   return Response.json(votes, { status: 200 });
 }
@@ -49,23 +51,23 @@ export async function PATCH(request: Request) {
     ).toResponse();
   }
 
-  const session = await auth();
+  const session = await getSession();
 
   if (!session?.user) {
     return new ChatSDKError('unauthorized:vote').toResponse();
   }
 
-  const chat = await getChatById({ id: chatId });
+  const chat = await apiClient.getChatById(chatId);
 
   if (!chat) {
     return new ChatSDKError('not_found:vote').toResponse();
   }
 
-  if (chat.userId !== session.user.id) {
+  if ((chat as any).userId !== session.user.id) {
     return new ChatSDKError('forbidden:vote').toResponse();
   }
 
-  await voteMessage({
+  await apiClient.voteMessage({
     chatId,
     messageId,
     type: type,

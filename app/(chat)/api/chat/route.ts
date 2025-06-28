@@ -1,65 +1,22 @@
-import {
-  appendClientMessage,
-  appendResponseMessages,
-  createDataStream,
-  smoothStream,
-  streamText,
-} from 'ai';
-import { auth, type UserType } from '@/app/(auth)/auth';
-import { type RequestHints, systemPrompt } from '@/lib/ai/prompts';
-import {
-  createStreamId,
-  deleteChatById,
-  getChatById,
-  getMessageCountByUserId,
-  getMessagesByChatId,
-  getStreamIdsByChatId,
-  saveChat,
-  saveMessages,
-} from '@/lib/db/queries';
-import { generateUUID, getTrailingMessageId } from '@/lib/utils';
-import { generateTitleFromUserMessage } from '../../actions';
-import { createDocument } from '@/lib/ai/tools/create-document';
-import { updateDocument } from '@/lib/ai/tools/update-document';
-import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
-import { getWeather } from '@/lib/ai/tools/get-weather';
-import { isProductionEnvironment } from '@/lib/constants';
-import { myProvider } from '@/lib/ai/providers';
+import { appendClientMessage } from 'ai';
+import { getSession } from '@/lib/auth';
+import type { RequestHints } from '@/lib/ai/prompts';
+import { apiClient } from '@/lib/api/client';
+import { generateUUID } from '@/lib/utils';
+// Simple title generation since external server handles complex AI tasks
+const generateTitleFromUserMessage = ({ message }: { message: any }) => {
+  const content =
+    message.parts?.find((part: any) => part.type === 'text')?.text ||
+    'New Chat';
+  return content.slice(0, 80).trim() || 'New Chat';
+};
 import { entitlementsByUserType } from '@/lib/ai/entitlements';
 import { postRequestBodySchema, type PostRequestBody } from './schema';
 import { geolocation } from '@vercel/functions';
-import {
-  createResumableStreamContext,
-  type ResumableStreamContext,
-} from 'resumable-stream';
-import { after } from 'next/server';
-import type { Chat } from '@/lib/db/schema';
-import { differenceInSeconds } from 'date-fns';
 import { ChatSDKError } from '@/lib/errors';
 
 export const maxDuration = 60;
-
-let globalStreamContext: ResumableStreamContext | null = null;
-
-function getStreamContext() {
-  if (!globalStreamContext) {
-    try {
-      globalStreamContext = createResumableStreamContext({
-        waitUntil: after,
-      });
-    } catch (error: any) {
-      if (error.message.includes('REDIS_URL')) {
-        console.log(
-          ' > Resumable streams are disabled due to missing REDIS_URL',
-        );
-      } else {
-        console.error(error);
-      }
-    }
-  }
-
-  return globalStreamContext;
-}
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   let requestBody: PostRequestBody;
@@ -72,50 +29,49 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { id, message, selectedChatModel, selectedVisibilityType } =
-      requestBody;
+    const { id, message } = requestBody;
 
-    const session = await auth();
+    const session = await getSession();
 
     if (!session?.user) {
       return new ChatSDKError('unauthorized:chat').toResponse();
     }
 
-    const userType: UserType = session.user.type;
+    const userType = 'standard'; // Default user type since we removed type-based entitlements
 
-    const messageCount = await getMessageCountByUserId({
-      id: session.user.id,
-      differenceInHours: 24,
-    });
+    const messageCountResponse = await apiClient.getMessageCountByUserId(
+      session.user.id,
+      24,
+    );
+    const messageCount = (messageCountResponse as any)?.count || 0;
 
     if (messageCount > entitlementsByUserType[userType].maxMessagesPerDay) {
       return new ChatSDKError('rate_limit:chat').toResponse();
     }
 
-    const chat = await getChatById({ id });
+    const chat = await apiClient.getChatById(id);
 
     if (!chat) {
       const title = await generateTitleFromUserMessage({
         message,
       });
 
-      await saveChat({
+      await apiClient.saveChat({
         id,
         userId: session.user.id,
         title,
-        visibility: selectedVisibilityType,
+        visibility: 'private', // Default to private - external server handles visibility
       });
     } else {
-      if (chat.userId !== session.user.id) {
+      if ((chat as any).userId !== session.user.id) {
         return new ChatSDKError('forbidden:chat').toResponse();
       }
     }
 
-    const previousMessages = await getMessagesByChatId({ id });
+    const previousMessages = await apiClient.getMessagesByChatId(id);
 
     const messages = appendClientMessage({
-      // @ts-expect-error: todo add type conversion from DBMessage[] to UIMessage[]
-      messages: previousMessages,
+      messages: previousMessages as any[],
       message,
     });
 
@@ -128,111 +84,35 @@ export async function POST(request: Request) {
       country,
     };
 
-    await saveMessages({
-      messages: [
-        {
-          chatId: id,
-          id: message.id,
-          role: 'user',
-          parts: message.parts,
-          attachments: message.experimental_attachments ?? [],
-          createdAt: new Date(),
-        },
-      ],
-    });
+    await apiClient.saveMessages([
+      {
+        chatId: id,
+        id: message.id,
+        role: 'user',
+        parts: message.parts,
+        attachments: message.experimental_attachments ?? [],
+        createdAt: new Date(),
+      },
+    ]);
 
     const streamId = generateUUID();
-    await createStreamId({ streamId, chatId: id });
+    await apiClient.createStreamId({ chatId: id });
 
-    const stream = createDataStream({
-      execute: (dataStream) => {
-        const result = streamText({
-          model: myProvider.languageModel(selectedChatModel),
-          system: systemPrompt({ selectedChatModel, requestHints }),
-          messages,
-          maxSteps: 5,
-          experimental_activeTools:
-            selectedChatModel === 'chat-model-reasoning'
-              ? []
-              : [
-                  'getWeather',
-                  'createDocument',
-                  'updateDocument',
-                  'requestSuggestions',
-                ],
-          experimental_transform: smoothStream({ chunking: 'word' }),
-          experimental_generateMessageId: generateUUID,
-          tools: {
-            getWeather,
-            createDocument: createDocument({ session, dataStream }),
-            updateDocument: updateDocument({ session, dataStream }),
-            requestSuggestions: requestSuggestions({
-              session,
-              dataStream,
-            }),
-          },
-          onFinish: async ({ response }) => {
-            if (session.user?.id) {
-              try {
-                const assistantId = getTrailingMessageId({
-                  messages: response.messages.filter(
-                    (message) => message.role === 'assistant',
-                  ),
-                });
-
-                if (!assistantId) {
-                  throw new Error('No assistant message found!');
-                }
-
-                const [, assistantMessage] = appendResponseMessages({
-                  messages: [message],
-                  responseMessages: response.messages,
-                });
-
-                await saveMessages({
-                  messages: [
-                    {
-                      id: assistantId,
-                      chatId: id,
-                      role: assistantMessage.role,
-                      parts: assistantMessage.parts,
-                      attachments:
-                        assistantMessage.experimental_attachments ?? [],
-                      createdAt: new Date(),
-                    },
-                  ],
-                });
-              } catch (_) {
-                console.error('Failed to save chat');
-              }
-            }
-          },
-          experimental_telemetry: {
-            isEnabled: isProductionEnvironment,
-            functionId: 'stream-text',
-          },
-        });
-
-        result.consumeStream();
-
-        result.mergeIntoDataStream(dataStream, {
-          sendReasoning: true,
-        });
+    // TODO: Replace with external API call for chat completions
+    // The external server should implement POST /chat/completions with streaming support
+    // For now, return a simple JSON response
+    return new Response(
+      JSON.stringify({
+        error:
+          'AI functionality disabled. External server integration required.',
+        message:
+          'Please implement chat completions in your external API server.',
+      }),
+      {
+        status: 501,
+        headers: { 'Content-Type': 'application/json' },
       },
-      onError: () => {
-        return 'Oops, an error occurred!';
-      },
-    });
-
-    const streamContext = getStreamContext();
-
-    if (streamContext) {
-      return new Response(
-        await streamContext.resumableStream(streamId, () => stream),
-      );
-    } else {
-      return new Response(stream);
-    }
+    );
   } catch (error) {
     if (error instanceof ChatSDKError) {
       return error.toResponse();
@@ -241,98 +121,8 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
-  const streamContext = getStreamContext();
-  const resumeRequestedAt = new Date();
-
-  if (!streamContext) {
-    return new Response(null, { status: 204 });
-  }
-
-  const { searchParams } = new URL(request.url);
-  const chatId = searchParams.get('chatId');
-
-  if (!chatId) {
-    return new ChatSDKError('bad_request:api').toResponse();
-  }
-
-  const session = await auth();
-
-  if (!session?.user) {
-    return new ChatSDKError('unauthorized:chat').toResponse();
-  }
-
-  let chat: Chat;
-
-  try {
-    chat = await getChatById({ id: chatId });
-  } catch {
-    return new ChatSDKError('not_found:chat').toResponse();
-  }
-
-  if (!chat) {
-    return new ChatSDKError('not_found:chat').toResponse();
-  }
-
-  if (chat.visibility === 'private' && chat.userId !== session.user.id) {
-    return new ChatSDKError('forbidden:chat').toResponse();
-  }
-
-  const streamIds = await getStreamIdsByChatId({ chatId });
-
-  if (!streamIds.length) {
-    return new ChatSDKError('not_found:stream').toResponse();
-  }
-
-  const recentStreamId = streamIds.at(-1);
-
-  if (!recentStreamId) {
-    return new ChatSDKError('not_found:stream').toResponse();
-  }
-
-  const emptyDataStream = createDataStream({
-    execute: () => {},
-  });
-
-  const stream = await streamContext.resumableStream(
-    recentStreamId,
-    () => emptyDataStream,
-  );
-
-  /*
-   * For when the generation is streaming during SSR
-   * but the resumable stream has concluded at this point.
-   */
-  if (!stream) {
-    const messages = await getMessagesByChatId({ id: chatId });
-    const mostRecentMessage = messages.at(-1);
-
-    if (!mostRecentMessage) {
-      return new Response(emptyDataStream, { status: 200 });
-    }
-
-    if (mostRecentMessage.role !== 'assistant') {
-      return new Response(emptyDataStream, { status: 200 });
-    }
-
-    const messageCreatedAt = new Date(mostRecentMessage.createdAt);
-
-    if (differenceInSeconds(resumeRequestedAt, messageCreatedAt) > 15) {
-      return new Response(emptyDataStream, { status: 200 });
-    }
-
-    const restoredStream = createDataStream({
-      execute: (buffer) => {
-        buffer.writeData({
-          type: 'append-message',
-          message: JSON.stringify(mostRecentMessage),
-        });
-      },
-    });
-
-    return new Response(restoredStream, { status: 200 });
-  }
-
-  return new Response(stream, { status: 200 });
+  // Note: Resumable streams disabled since Redis is removed
+  return new Response(null, { status: 204 });
 }
 
 export async function DELETE(request: Request) {
@@ -343,19 +133,19 @@ export async function DELETE(request: Request) {
     return new ChatSDKError('bad_request:api').toResponse();
   }
 
-  const session = await auth();
+  const session = await getSession();
 
   if (!session?.user) {
     return new ChatSDKError('unauthorized:chat').toResponse();
   }
 
-  const chat = await getChatById({ id });
+  const chat = await apiClient.getChatById(id);
 
-  if (chat.userId !== session.user.id) {
+  if ((chat as any).userId !== session.user.id) {
     return new ChatSDKError('forbidden:chat').toResponse();
   }
 
-  const deletedChat = await deleteChatById({ id });
+  const deletedChat = await apiClient.deleteChatById(id);
 
   return Response.json(deletedChat, { status: 200 });
 }

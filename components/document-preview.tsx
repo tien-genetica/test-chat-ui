@@ -1,26 +1,10 @@
 'use client';
 
-import {
-  memo,
-  MouseEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-} from 'react';
-import { ArtifactKind, UIArtifact } from './artifact';
+import { memo } from 'react';
+import type { ArtifactKind } from '@/lib/types';
 import { FileIcon, FullscreenIcon, ImageIcon, LoaderIcon } from './icons';
-import { cn, fetcher } from '@/lib/utils';
-import { Document } from '@/lib/db/schema';
 import { InlineDocumentSkeleton } from './document-skeleton';
-import useSWR from 'swr';
-import { Editor } from './text-editor';
 import { DocumentToolCall, DocumentToolResult } from './document';
-import { CodeEditor } from './code-editor';
-import { useArtifact } from '@/hooks/use-artifact';
-import equal from 'fast-deep-equal';
-import { SpreadsheetEditor } from './sheet-editor';
-import { ImageEditor } from './image-editor';
 
 interface DocumentPreviewProps {
   isReadonly: boolean;
@@ -33,87 +17,28 @@ export function DocumentPreview({
   result,
   args,
 }: DocumentPreviewProps) {
-  const { artifact, setArtifact } = useArtifact();
-
-  const { data: documents, isLoading: isDocumentsFetching } = useSWR<
-    Array<Document>
-  >(result ? `/api/document?id=${result.id}` : null, fetcher);
-
-  const previewDocument = useMemo(() => documents?.[0], [documents]);
-  const hitboxRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const boundingBox = hitboxRef.current?.getBoundingClientRect();
-
-    if (artifact.documentId && boundingBox) {
-      setArtifact((artifact) => ({
-        ...artifact,
-        boundingBox: {
-          left: boundingBox.x,
-          top: boundingBox.y,
-          width: boundingBox.width,
-          height: boundingBox.height,
-        },
-      }));
-    }
-  }, [artifact.documentId, setArtifact]);
-
-  if (artifact.isVisible) {
-    if (result) {
-      return (
-        <DocumentToolResult
-          type="create"
-          result={{ id: result.id, title: result.title, kind: result.kind }}
-          isReadonly={isReadonly}
-        />
-      );
-    }
-
-    if (args) {
-      return (
-        <DocumentToolCall
-          type="create"
-          args={{ title: args.title }}
-          isReadonly={isReadonly}
-        />
-      );
-    }
+  // Simplified - artifacts now handled by external server
+  if (result) {
+    return (
+      <DocumentToolResult
+        type="create"
+        result={{ id: result.id, title: result.title, kind: result.kind }}
+        isReadonly={isReadonly}
+      />
+    );
   }
 
-  if (isDocumentsFetching) {
-    return <LoadingSkeleton artifactKind={result.kind ?? args.kind} />;
+  if (args) {
+    return (
+      <DocumentToolCall
+        type="create"
+        args={{ title: args.title }}
+        isReadonly={isReadonly}
+      />
+    );
   }
 
-  const document: Document | null = previewDocument
-    ? previewDocument
-    : artifact.status === 'streaming'
-      ? {
-          title: artifact.title,
-          kind: artifact.kind,
-          content: artifact.content,
-          id: artifact.documentId,
-          createdAt: new Date(),
-          userId: 'noop',
-        }
-      : null;
-
-  if (!document) return <LoadingSkeleton artifactKind={artifact.kind} />;
-
-  return (
-    <div className="relative w-full cursor-pointer">
-      <HitboxLayer
-        hitboxRef={hitboxRef}
-        result={result}
-        setArtifact={setArtifact}
-      />
-      <DocumentHeader
-        title={document.title}
-        kind={document.kind}
-        isStreaming={artifact.status === 'streaming'}
-      />
-      <DocumentContent document={document} />
-    </div>
-  );
+  return <LoadingSkeleton artifactKind="text" />;
 }
 
 const LoadingSkeleton = ({ artifactKind }: { artifactKind: ArtifactKind }) => (
@@ -141,63 +66,7 @@ const LoadingSkeleton = ({ artifactKind }: { artifactKind: ArtifactKind }) => (
   </div>
 );
 
-const PureHitboxLayer = ({
-  hitboxRef,
-  result,
-  setArtifact,
-}: {
-  hitboxRef: React.RefObject<HTMLDivElement>;
-  result: any;
-  setArtifact: (
-    updaterFn: UIArtifact | ((currentArtifact: UIArtifact) => UIArtifact),
-  ) => void;
-}) => {
-  const handleClick = useCallback(
-    (event: MouseEvent<HTMLElement>) => {
-      const boundingBox = event.currentTarget.getBoundingClientRect();
-
-      setArtifact((artifact) =>
-        artifact.status === 'streaming'
-          ? { ...artifact, isVisible: true }
-          : {
-              ...artifact,
-              title: result.title,
-              documentId: result.id,
-              kind: result.kind,
-              isVisible: true,
-              boundingBox: {
-                left: boundingBox.x,
-                top: boundingBox.y,
-                width: boundingBox.width,
-                height: boundingBox.height,
-              },
-            },
-      );
-    },
-    [setArtifact, result],
-  );
-
-  return (
-    <div
-      className="size-full absolute top-0 left-0 rounded-xl z-10"
-      ref={hitboxRef}
-      onClick={handleClick}
-      role="presentation"
-      aria-hidden="true"
-    >
-      <div className="w-full p-4 flex justify-end items-center">
-        <div className="absolute right-[9px] top-[13px] p-2 hover:dark:bg-zinc-700 rounded-md hover:bg-zinc-100">
-          <FullscreenIcon />
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const HitboxLayer = memo(PureHitboxLayer, (prevProps, nextProps) => {
-  if (!equal(prevProps.result, nextProps.result)) return false;
-  return true;
-});
+// HitboxLayer removed - artifacts handled by external server
 
 const PureDocumentHeader = ({
   title,
@@ -234,52 +103,4 @@ const DocumentHeader = memo(PureDocumentHeader, (prevProps, nextProps) => {
   return true;
 });
 
-const DocumentContent = ({ document }: { document: Document }) => {
-  const { artifact } = useArtifact();
-
-  const containerClassName = cn(
-    'h-[257px] overflow-y-scroll border rounded-b-2xl dark:bg-muted border-t-0 dark:border-zinc-700',
-    {
-      'p-4 sm:px-14 sm:py-16': document.kind === 'text',
-      'p-0': document.kind === 'code',
-    },
-  );
-
-  const commonProps = {
-    content: document.content ?? '',
-    isCurrentVersion: true,
-    currentVersionIndex: 0,
-    status: artifact.status,
-    saveContent: () => {},
-    suggestions: [],
-  };
-
-  return (
-    <div className={containerClassName}>
-      {document.kind === 'text' ? (
-        <Editor {...commonProps} onSaveContent={() => {}} />
-      ) : document.kind === 'code' ? (
-        <div className="flex flex-1 relative w-full">
-          <div className="absolute inset-0">
-            <CodeEditor {...commonProps} onSaveContent={() => {}} />
-          </div>
-        </div>
-      ) : document.kind === 'sheet' ? (
-        <div className="flex flex-1 relative size-full p-4">
-          <div className="absolute inset-0">
-            <SpreadsheetEditor {...commonProps} />
-          </div>
-        </div>
-      ) : document.kind === 'image' ? (
-        <ImageEditor
-          title={document.title}
-          content={document.content ?? ''}
-          isCurrentVersion={true}
-          currentVersionIndex={0}
-          status={artifact.status}
-          isInline={true}
-        />
-      ) : null}
-    </div>
-  );
-};
+// DocumentContent removed - artifacts handled by external server

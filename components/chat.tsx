@@ -5,45 +5,38 @@ import { useChat } from '@ai-sdk/react';
 import { useEffect, useState } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 import { ChatHeader } from '@/components/chat-header';
-import type { Vote } from '@/lib/db/schema';
+import type { Vote } from '@/lib/api/types';
 import { fetcher, fetchWithErrorHandlers, generateUUID } from '@/lib/utils';
-import { Artifact } from './artifact';
+
 import { MultimodalInput } from './multimodal-input';
 import { Messages } from './messages';
-import type { VisibilityType } from './visibility-selector';
-import { useArtifactSelector } from '@/hooks/use-artifact';
+
 import { unstable_serialize } from 'swr/infinite';
 import { getChatHistoryPaginationKey } from './sidebar-history';
 import { toast } from './toast';
-import type { Session } from 'next-auth';
+import type { Session } from '@/lib/auth';
 import { useSearchParams } from 'next/navigation';
-import { useChatVisibility } from '@/hooks/use-chat-visibility';
+
 import { useAutoResume } from '@/hooks/use-auto-resume';
 import { ChatSDKError } from '@/lib/errors';
 
 export function Chat({
   id,
   initialMessages,
-  initialChatModel,
-  initialVisibilityType,
   isReadonly,
   session,
   autoResume,
 }: {
   id: string;
   initialMessages: Array<UIMessage>;
-  initialChatModel: string;
-  initialVisibilityType: VisibilityType;
   isReadonly: boolean;
   session: Session;
   autoResume: boolean;
 }) {
   const { mutate } = useSWRConfig();
 
-  const { visibilityType } = useChatVisibility({
-    chatId: id,
-    initialVisibilityType,
-  });
+  // Visibility handled by external server - default to private
+  const visibilityType = 'private';
 
   const {
     messages,
@@ -67,8 +60,6 @@ export function Chat({
     experimental_prepareRequestBody: (body) => ({
       id,
       message: body.messages.at(-1),
-      selectedChatModel: initialChatModel,
-      selectedVisibilityType: visibilityType,
     }),
     onFinish: () => {
       mutate(unstable_serialize(getChatHistoryPaginationKey));
@@ -106,7 +97,7 @@ export function Chat({
   );
 
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
-  const isArtifactVisible = useArtifactSelector((state) => state.isVisible);
+  const isArtifactVisible = false; // Artifacts disabled - handled by external server
 
   useAutoResume({
     autoResume,
@@ -119,13 +110,7 @@ export function Chat({
   return (
     <>
       <div className="flex flex-col min-w-0 h-dvh bg-background">
-        <ChatHeader
-          chatId={id}
-          selectedModelId={initialChatModel}
-          selectedVisibilityType={initialVisibilityType}
-          isReadonly={isReadonly}
-          session={session}
-        />
+        <ChatHeader chatId={id} isReadonly={isReadonly} session={session} />
 
         <Messages
           chatId={id}
@@ -152,29 +137,12 @@ export function Chat({
               messages={messages}
               setMessages={setMessages}
               append={append}
-              selectedVisibilityType={visibilityType}
             />
           )}
         </form>
       </div>
 
-      <Artifact
-        chatId={id}
-        input={input}
-        setInput={setInput}
-        handleSubmit={handleSubmit}
-        status={status}
-        stop={stop}
-        attachments={attachments}
-        setAttachments={setAttachments}
-        append={append}
-        messages={messages}
-        setMessages={setMessages}
-        reload={reload}
-        votes={votes}
-        isReadonly={isReadonly}
-        selectedVisibilityType={visibilityType}
-      />
+      {/* Artifact functionality disabled - handled by external server */}
     </>
   );
 }

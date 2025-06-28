@@ -1,15 +1,14 @@
 import { TerminalWindowIcon, LoaderIcon, CrossSmallIcon } from './icons';
 import { Button } from './ui/button';
 import {
-  Dispatch,
-  SetStateAction,
+  type Dispatch,
+  type SetStateAction,
   useCallback,
   useEffect,
   useRef,
   useState,
 } from 'react';
 import { cn } from '@/lib/utils';
-import { useArtifactSelector } from '@/hooks/use-artifact';
 
 export interface ConsoleOutputContent {
   type: 'text' | 'image';
@@ -32,7 +31,7 @@ export function Console({ consoleOutputs, setConsoleOutputs }: ConsoleProps) {
   const [isResizing, setIsResizing] = useState(false);
   const consoleEndRef = useRef<HTMLDivElement>(null);
 
-  const isArtifactVisible = useArtifactSelector((state) => state.isVisible);
+  // Artifacts disabled - handled by external server
 
   const minHeight = 100;
   const maxHeight = 800;
@@ -70,11 +69,7 @@ export function Console({ consoleOutputs, setConsoleOutputs }: ConsoleProps) {
     consoleEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [consoleOutputs]);
 
-  useEffect(() => {
-    if (!isArtifactVisible) {
-      setConsoleOutputs([]);
-    }
-  }, [isArtifactVisible, setConsoleOutputs]);
+  // Auto-clear console outputs when artifacts are not visible - disabled since artifacts are handled externally
 
   return consoleOutputs.length > 0 ? (
     <>

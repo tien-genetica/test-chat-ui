@@ -1,7 +1,9 @@
-import { auth } from '@/app/(auth)/auth';
+import { getSession } from '@/lib/auth';
 import type { NextRequest } from 'next/server';
-import { getChatsByUserId } from '@/lib/db/queries';
+import { apiClient } from '@/lib/api/client';
 import { ChatSDKError } from '@/lib/errors';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -17,17 +19,16 @@ export async function GET(request: NextRequest) {
     ).toResponse();
   }
 
-  const session = await auth();
+  const session = await getSession();
 
   if (!session?.user) {
     return new ChatSDKError('unauthorized:chat').toResponse();
   }
 
-  const chats = await getChatsByUserId({
-    id: session.user.id,
+  const chats = await apiClient.getChatsByUserId(session.user.id, {
     limit,
-    startingAfter,
-    endingBefore,
+    startingAfter: startingAfter || undefined,
+    endingBefore: endingBefore || undefined,
   });
 
   return Response.json(chats);

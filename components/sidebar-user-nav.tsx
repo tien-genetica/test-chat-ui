@@ -2,9 +2,9 @@
 
 import { ChevronUp } from 'lucide-react';
 import Image from 'next/image';
-import type { User } from 'next-auth';
-import { signOut, useSession } from 'next-auth/react';
+import type { User } from '@/lib/auth';
 import { useTheme } from 'next-themes';
+import { useAuth } from '@/lib/auth-context';
 
 import {
   DropdownMenu,
@@ -21,21 +21,20 @@ import {
 import { useRouter } from 'next/navigation';
 import { toast } from './toast';
 import { LoaderIcon } from './icons';
-import { guestRegex } from '@/lib/constants';
 
-export function SidebarUserNav({ user }: { user: User }) {
+export function SidebarUserNav({ user }: { user?: User }) {
   const router = useRouter();
-  const { data, status } = useSession();
+  const { user: authUser, isLoading, signOut } = useAuth();
   const { setTheme, resolvedTheme } = useTheme();
 
-  const isGuest = guestRegex.test(data?.user?.email ?? '');
+  const currentUser = user || authUser;
 
   return (
     <SidebarMenu>
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            {status === 'loading' ? (
+            {isLoading ? (
               <SidebarMenuButton className="data-[state=open]:bg-sidebar-accent bg-background data-[state=open]:text-sidebar-accent-foreground h-10 justify-between">
                 <div className="flex flex-row gap-2">
                   <div className="size-6 bg-zinc-500/30 rounded-full animate-pulse" />
@@ -53,14 +52,14 @@ export function SidebarUserNav({ user }: { user: User }) {
                 className="data-[state=open]:bg-sidebar-accent bg-background data-[state=open]:text-sidebar-accent-foreground h-10"
               >
                 <Image
-                  src={`https://avatar.vercel.sh/${user.email}`}
-                  alt={user.email ?? 'User Avatar'}
+                  src={`https://avatar.vercel.sh/${currentUser?.email}`}
+                  alt={currentUser?.email ?? 'User Avatar'}
                   width={24}
                   height={24}
                   className="rounded-full"
                 />
                 <span data-testid="user-email" className="truncate">
-                  {isGuest ? 'Guest' : user?.email}
+                  {currentUser?.email || 'Guest'}
                 </span>
                 <ChevronUp className="ml-auto" />
               </SidebarMenuButton>
@@ -74,7 +73,9 @@ export function SidebarUserNav({ user }: { user: User }) {
             <DropdownMenuItem
               data-testid="user-nav-item-theme"
               className="cursor-pointer"
-              onSelect={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+              onSelect={() =>
+                setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
+              }
             >
               {`Toggle ${resolvedTheme === 'light' ? 'dark' : 'light'} mode`}
             </DropdownMenuItem>
@@ -84,26 +85,23 @@ export function SidebarUserNav({ user }: { user: User }) {
                 type="button"
                 className="w-full cursor-pointer"
                 onClick={() => {
-                  if (status === 'loading') {
+                  if (isLoading) {
                     toast({
                       type: 'error',
                       description:
                         'Checking authentication status, please try again!',
                     });
-
                     return;
                   }
 
-                  if (isGuest) {
+                  if (!currentUser) {
                     router.push('/login');
                   } else {
-                    signOut({
-                      redirectTo: '/',
-                    });
+                    signOut();
                   }
                 }}
               >
-                {isGuest ? 'Login to your account' : 'Sign out'}
+                {!currentUser ? 'Login to your account' : 'Sign out'}
               </button>
             </DropdownMenuItem>
           </DropdownMenuContent>

@@ -1,8 +1,10 @@
-import { put } from '@vercel/blob';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { auth } from '@/app/(auth)/auth';
+import { getSession } from '@/lib/auth';
+import { apiClient } from '@/lib/api/client';
+
+export const dynamic = 'force-dynamic';
 
 // Use Blob instead of File since File is not available in Node.js environment
 const FileSchema = z.object({
@@ -18,7 +20,7 @@ const FileSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const session = await auth();
+  const session = await getSession();
 
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -51,11 +53,15 @@ export async function POST(request: Request) {
     const fileBuffer = await file.arrayBuffer();
 
     try {
-      const data = await put(`${filename}`, fileBuffer, {
-        access: 'public',
+      // Upload file through external API
+      const uploadData = await apiClient.uploadFile({
+        filename,
+        fileBuffer,
+        contentType: file.type,
+        userId: session.user.id,
       });
 
-      return NextResponse.json(data);
+      return NextResponse.json(uploadData);
     } catch (error) {
       return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
     }

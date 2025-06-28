@@ -1,10 +1,9 @@
 'use server';
 
 import { z } from 'zod';
+import { redirect } from 'next/navigation';
 
-import { createUser, getUser } from '@/lib/db/queries';
-
-import { signIn } from './auth';
+import { registerUser, createSession } from '@/lib/auth';
 
 const authFormSchema = z.object({
   email: z.string().email(),
@@ -19,24 +18,20 @@ export const login = async (
   _: LoginActionState,
   formData: FormData,
 ): Promise<LoginActionState> => {
-  try {
-    const validatedData = authFormSchema.parse({
-      email: formData.get('email'),
-      password: formData.get('password'),
-    });
+  const email = formData.get('email') as string;
+  const password = formData.get('password') as string;
 
-    await signIn('credentials', {
-      email: validatedData.email,
-      password: validatedData.password,
-      redirect: false,
-    });
+  // Hardcoded credentials check
+  if (email === 'a@gmail.com' && password === '1') {
+    const user = {
+      id: 'hardcoded-user-id',
+      email: 'a@gmail.com',
+      createdAt: new Date(),
+    };
 
-    return { status: 'success' };
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return { status: 'invalid_data' };
-    }
-
+    await createSession(user);
+    redirect('/');
+  } else {
     return { status: 'failed' };
   }
 };
@@ -61,22 +56,24 @@ export const register = async (
       password: formData.get('password'),
     });
 
-    const [user] = await getUser(validatedData.email);
+    const user = await registerUser(
+      validatedData.email,
+      validatedData.password,
+    );
 
     if (user) {
-      return { status: 'user_exists' } as RegisterActionState;
+      await createSession(user);
+      redirect('/');
+    } else {
+      return { status: 'failed' };
     }
-    await createUser(validatedData.email, validatedData.password);
-    await signIn('credentials', {
-      email: validatedData.email,
-      password: validatedData.password,
-      redirect: false,
-    });
-
-    return { status: 'success' };
   } catch (error) {
     if (error instanceof z.ZodError) {
       return { status: 'invalid_data' };
+    }
+
+    if (error instanceof Error && error.message === 'User already exists') {
+      return { status: 'user_exists' };
     }
 
     return { status: 'failed' };
