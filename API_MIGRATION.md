@@ -14,8 +14,8 @@ This codebase has been migrated from direct database access to using external se
 - NextAuth.js authentication system
 - OpenTelemetry monitoring
 - AI providers (OpenAI direct integration)
-- AI tools (createDocument, updateDocument, getWeather, requestSuggestions)
-- Artifacts system (document creation, editing, versioning UI)
+- AI tools - All moved to external server
+- Artifacts system - All moved to external server
 - Artifact-related components and hooks
 - Test suite (Playwright e2e tests, unit tests, test utilities)
 - Chat model selection system (models.ts, ModelSelector component)
@@ -77,13 +77,6 @@ Your external API must implement:
 - `DELETE /chats/{chatId}/messages` - Delete messages after timestamp
 - `GET /users/{userId}/message-count?hours={hours}` - Get user message count
 
-### Document Management
-
-- `GET /documents/{id}` - Get document by ID
-- `POST /documents` - Save/create document
-- `DELETE /documents/{id}` - Delete documents after timestamp
-- `GET /documents/{id}/suggestions` - Get suggestions for document
-
 ### File Upload
 
 - `POST /files/upload` - Upload files (multipart/form-data)
@@ -100,7 +93,7 @@ Your external API must implement:
 - `POST /chat/completions` - Streaming chat completions with tool support
 - `POST /chat/title` - Generate chat titles from messages
 
-### Artifacts & Documents (New Requirements)
+### Artifacts (New Requirements)
 
 - `POST /artifacts/code/generate` - Generate code snippets
 - `POST /artifacts/code/update` - Update existing code
@@ -110,11 +103,8 @@ Your external API must implement:
 - `POST /artifacts/sheet/update` - Update existing sheets
 - `POST /artifacts/image/generate` - Generate images (DALL-E, etc.)
 - `POST /artifacts/image/update` - Update/regenerate images
-- `POST /documents/{id}/suggestions` - Generate writing suggestions
 
 ### Tools & Utilities (New Requirements)
-
-- `GET /weather` - Weather information (if using weather tools)
 
 See `lib/api/client.ts` for detailed implementation and parameters.
 

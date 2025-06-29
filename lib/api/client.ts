@@ -164,36 +164,6 @@ export class ApiClient {
     });
   }
 
-  // Document Management
-  async getDocumentsById(id: string) {
-    return this.request(`/documents/${id}`);
-  }
-
-  async saveDocument(data: {
-    id: string;
-    content: string;
-    title: string;
-    kind: string;
-    userId: string;
-  }) {
-    return this.request('/documents', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteDocumentsByIdAfterTimestamp(id: string, timestamp: Date) {
-    return this.request(`/documents/${id}`, {
-      method: 'DELETE',
-      body: JSON.stringify({ timestamp: timestamp.toISOString() }),
-    });
-  }
-
-  // Suggestions Management
-  async getSuggestionsByDocumentId(documentId: string) {
-    return this.request(`/documents/${documentId}/suggestions`);
-  }
-
   // File Upload Management
   async uploadFile(data: {
     filename: string;

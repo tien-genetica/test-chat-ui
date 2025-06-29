@@ -5,7 +5,7 @@ export type ArtifactKind = 'text' | 'code' | 'image' | 'sheet';
 
 export interface UIArtifact {
   id: string;
-  documentId: string;
+
   title: string;
   content: string;
   kind: ArtifactKind;

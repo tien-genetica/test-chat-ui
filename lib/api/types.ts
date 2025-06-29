@@ -40,27 +40,6 @@ export interface Vote {
   isUpvoted: boolean;
 }
 
-export interface Document {
-  id: string;
-  createdAt: Date;
-  title: string;
-  content?: string;
-  userId: string;
-  kind?: string;
-}
-
-export interface Suggestion {
-  id: string;
-  documentId: string;
-  documentCreatedAt: Date;
-  originalText: string;
-  suggestedText: string;
-  description?: string;
-  isResolved: boolean;
-  userId: string;
-  createdAt: Date;
-}
-
 export interface Stream {
   id: string;
   chatId: string;
@@ -120,14 +99,5 @@ export interface VoteMessageRequest {
   type: 'up' | 'down';
 }
 
-export interface CreateDocumentRequest {
-  id: string;
-  content: string;
-  title: string;
-  kind: string;
-  userId: string;
-}
-
 // Legacy type aliases for backward compatibility
 export type DBMessage = APIMessage;
-export type VisibilityType = 'public' | 'private';
